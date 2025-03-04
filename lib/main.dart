@@ -1,101 +1,90 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
-import 'package:audioplayers/audioplayers.dart';
+import 'package:just_audio/just_audio.dart';
 
 void main() {
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return const MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: AppLifeCycleDisplay(),
-    );
-  }
+  State<MyApp> createState() => _MyAppState();
 }
 
-class AppLifeCycleDisplay extends StatefulWidget {
-  const AppLifeCycleDisplay({super.key});
-
-  @override
-  State<AppLifeCycleDisplay> createState() => _AppLifeCycleDisplayState();
-}
-
-class _AppLifeCycleDisplayState extends State<AppLifeCycleDisplay> {
-  final String musicUrl =
-      "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
-  late final AppLifecycleListener _listener;
-  final AudioPlayer _audioPlayer = AudioPlayer();
-  bool isPlaying = false;
-  late AppLifecycleState? _state;
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  final player = AudioPlayer();
+  final TextEditingController _urlController = TextEditingController();
+  bool wasPlaying = false;
 
   @override
   void initState() {
     super.initState();
-
-    _audioPlayer.onPlayerStateChanged.listen((state) {
-      setState(() {
-        isPlaying = state == PlayerState.playing;
-      });
-    });
-
-    _state = SchedulerBinding.instance.lifecycleState;
-    _listener = AppLifecycleListener(
-      onResume: _resumeMusic,
-      onPause: _pauseMusic,
-      onInactive: _pauseMusic,
-      onHide: _pauseMusic,
-    );
+    WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
-    _listener.dispose();
-    _audioPlayer.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    player.dispose();
+    _urlController.dispose();
     super.dispose();
   }
 
-  void _playPauseMusic() async {
-    if (isPlaying) {
-      await _audioPlayer.pause();
-    } else {
-      await _audioPlayer.play(UrlSource(musicUrl));
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      if (player.playing) {
+        wasPlaying = true;
+        player.pause();
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      if (wasPlaying) {
+        player.play();
+        wasPlaying = false;
+      }
     }
   }
 
-  void _pauseMusic() async {
-    await _audioPlayer.pause();
-  }
+  void handlePlayPause() async {
+    if (_urlController.text.isEmpty) return;
 
-  void _resumeMusic() async {
-    await _audioPlayer.resume();
+    if (player.playing) {
+      await player.pause();
+    } else {
+      await player.setUrl(_urlController.text);
+      await player.play();
+    }
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text("Simple Music Player")),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            IconButton(
-              icon: Icon(
-                isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill,
+    return MaterialApp(
+      home: Scaffold(
+        appBar: AppBar(
+          centerTitle: true,
+          title: const Text('Music Player'),
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              TextField(
+                controller: _urlController,
+                decoration: const InputDecoration(
+                  labelText: "Enter Your Music URL Here",
+                  border: OutlineInputBorder(),
+                ),
               ),
-              iconSize: 64,
-              onPressed: _playPauseMusic,
-            ),
-            const SizedBox(height: 20),
-            Text(
-              isPlaying ? "Playing..." : "Paused",
-              style: const TextStyle(fontSize: 18),
-            ),
-          ],
+              const SizedBox(height: 40),
+              IconButton(
+                icon: Icon(player.playing ? Icons.pause : Icons.play_arrow),
+                onPressed: handlePlayPause,
+              ),
+            ],
+          ),
         ),
       ),
     );
